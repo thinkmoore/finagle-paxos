@@ -1,45 +1,80 @@
 import com.twitter.finagle.Service
 import com.twitter.finagle.thrift.{ThriftClientRequest, ThriftClientFramedCodec, ThriftServerFramedCodec}
 import com.twitter.finagle.builder.{ClientBuilder, ServerBuilder, Server}
-import com.twitter.util.{Await, Future}
+import com.twitter.util.{Await, Future, Duration, Stopwatch}
+import com.twitter.conversions.time._
 import org.apache.thrift.protocol.TBinaryProtocol
 import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicInteger
 import thrift.PaxosIPC
 import thrift.PrepareResponse
 
-class General extends PaxosIPC.FutureIface {
+class Proposer(val ports : Seq[Int]) {
+  val threshold : Int = (ports.size / 2) + 1
+  var next = 0
+
+  val clients = ports.map(port => {
+    println("Proposer connecting to port " + port)
+    val service : Service[ThriftClientRequest, Array[Byte]] = ClientBuilder()
+      .hosts(new InetSocketAddress(port))
+      .codec(ThriftClientFramedCodec())
+      .hostConnectionLimit(1)
+      .build()
+    new PaxosIPC.FinagledClient(service, new TBinaryProtocol.Factory())
+  })
+
   var np = 0
+  var a  = new AtomicInteger(0)
+  var no = 0
+  var vo : Option[Int] = None
+
+  def propose(): Unit = {
+    np = np + 1
+    a.set(0)
+    no = 0
+    vo = None
+
+    Await.ready(Future.join(clients.map(c => c.prepare(np) flatMap prepared)), 1.second)
+  }
+
+  def prepared(pr : PrepareResponse): Future[Unit] = {
+    val n = pr.round
+    val v = pr.value
+    if (n > no) {
+      no = n
+      vo = v
+    }
+    if (a.getAndIncrement + 1 == threshold) {
+       if (vo == None) {
+          vo = Some(next)
+          next = next + 1
+       }
+       a.set(0)
+       np = if (np > no) np else no
+       Future.join(clients.map(c => c.accept(np,vo.get) flatMap accepted))
+    } else Future()
+  }
+
+  def accepted(n : Int): Future[Unit] = {
+    if (n == np && a.getAndIncrement + 1 == threshold)
+      Future.join(clients.map(c => c.decided(vo.get)))
+    else Future()
+  }
+}
+
+class Acceptor(val port : Int) extends PaxosIPC.FutureIface {
   var nl = 0
   var na = 0
   var va : Option[Int] = None
-
-  def propose() : Int = {
-    println("Proposing!")
-
-    val service : Service[ThriftClientRequest, Array[Byte]] = ClientBuilder()
-       .hosts(new InetSocketAddress(8080))
-       .codec(ThriftClientFramedCodec())
-       .hostConnectionLimit(1)
-       .build()
-    val client = new PaxosIPC.FinagledClient(service, new TBinaryProtocol.Factory())
-
-    client.accept(1,2) onSuccess { value => client.decided(value) } ensure { service.release() }
-
-    var a = 0
-    var no = 0
-
-    np = np + 1
-
-    np
-  }
 
   def listen() = {
     val service = new PaxosIPC.FinagledService(this, new TBinaryProtocol.Factory())
     val server : Server = ServerBuilder()
       .name("PaxosService")
-      .bindTo(new InetSocketAddress(8080))
+      .bindTo(new InetSocketAddress(port))
       .codec(ThriftServerFramedCodec())
       .build(service)
+    println("Started Acceptor on port " + port)
   }
 
   def prepare(n : Int): Future[PrepareResponse] = {
@@ -57,13 +92,20 @@ class General extends PaxosIPC.FutureIface {
   }
 
   def decided(value : Int): Future[Unit] = {
-    println("Decided on " + value)
+    // println(port + ": decided(" + value + ")")
     Future()
   }
 }
 
 object Main extends App {
-  val g = new General
-  g.listen()
-  if (!args.find(a => a == "-p").isEmpty) g.propose() else g.listen()
+  val f = if (args.size < 1) 1 else args(0).toInt
+  val ports = 12000 to 12000 + (2 * f + 1)
+  ports.map(p => new Acceptor(p).listen())
+  val proposer = new Proposer(ports)
+  val elapsed: () => Duration = Stopwatch.start()
+  1 to 1000 foreach { _ => proposer.propose() }
+  val duration: Duration = elapsed()
+  println("1000 rounds of paxos completed in " + duration)
+  println("Throughput: " + (1000 / duration.inSeconds) + " rounds per second")
+  System.exit(0)
 }
