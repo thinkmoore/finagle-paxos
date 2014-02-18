@@ -23,14 +23,18 @@ class Proposer(val ports : Seq[Int]) {
     new PaxosIPC.FinagledClient(service, new TBinaryProtocol.Factory())
   })
 
+  val majority = clients.drop(threshold + 1)
+
   var np = 0
   var a  = new AtomicInteger(0)
+  var p  = new AtomicInteger(0)
   var no = 0
   var vo : Option[Int] = None
 
   def propose(): Unit = {
     np = np + 1
     a.set(0)
+    p.set(0)
     no = 0
     vo = None
 
@@ -44,19 +48,18 @@ class Proposer(val ports : Seq[Int]) {
       no = n
       vo = v
     }
-    if (a.getAndIncrement == threshold) {
+    if (p.getAndIncrement() == threshold) {
        if (vo == None) {
           vo = Some(next)
           next = next + 1
        }
-       a.set(0)
        np = if (np > no) np else no
        Future.join(clients.map(c => c.accept(np,vo.get) flatMap accepted))
     } else Future()
   }
 
   def accepted(n : Int): Future[Unit] = {
-    if (n == np && a.getAndIncrement == threshold)
+    if (n == np && a.getAndIncrement() == threshold)
       Future.join(clients.map(c => c.decided(vo.get)))
     else Future()
   }
