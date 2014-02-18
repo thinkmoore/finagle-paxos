@@ -14,7 +14,7 @@ class BenchmarkClient(val ports : Seq[Int]) {
     val service : Service[ThriftClientRequest, Array[Byte]] = ClientBuilder()
       .hosts(new InetSocketAddress(port))
       .codec(ThriftClientFramedCodec())
-      .hostConnectionLimit(1)
+      .hostConnectionLimit(1024)
       .build()
     new BenchmarkIPC.FinagledClient(service, new TBinaryProtocol.Factory())
   })
