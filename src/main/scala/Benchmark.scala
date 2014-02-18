@@ -19,8 +19,16 @@ class BenchmarkClient(val ports : Seq[Int]) {
     new BenchmarkIPC.FinagledClient(service, new TBinaryProtocol.Factory())
   })
 
-  def request(): Unit = {
-    Await.ready(Future.join(clients.map(c => c.foo())))
+  def request(messages: Int, window: Int): Unit = {
+    val toSend = new AtomicInteger(messages)
+    
+    def send(): Future[Unit] = {
+      if (toSend.getAndDecrement() > 0) {
+        Future.join(clients.map(c => c.foo())) flatMap {_ => send()} }
+      else Future.value()
+    }
+
+    println(Future.join(0 to window map { _ => send() }).get())
   }
 }
 
@@ -41,19 +49,20 @@ class BenchmarkServer(val port : Int) extends BenchmarkIPC.FutureIface {
 }
 
 object Benchmark extends App {
-  if (args.size < 2) {
-     println("Usage: <# clients> <# messages> [delay in s]")
+  if (args.size < 3) {
+     println("Usage: <# clients> <# messages> <# in flight> [delay in s]")
      System.exit(-1)
   }
   val clients = args(0).toInt
   val messages = args(1).toInt
-  val waittime = if (args.size > 2) args(2).toLong else 1L
+  val inFlight = args(2).toInt
+  val waittime = if (args.size > 3) args(3).toLong else 1L
   val ports = 12000 to 12000 + (clients - 1)
   ports.map(p => new BenchmarkServer(p).listen())
   val client = new BenchmarkClient(ports)
   Thread.sleep(1000L * waittime)
   val elapsed: () => Duration = Stopwatch.start()
-  1 to messages foreach { _ => client.request() }
+  client.request(messages, inFlight)
   val duration: Duration = elapsed()
   println(messages + " messages processed in " + duration)
   println("Throughput: " + (messages / duration.inSeconds) + " messages per second")
