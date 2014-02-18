@@ -98,14 +98,21 @@ class Acceptor(val port : Int) extends PaxosIPC.FutureIface {
 }
 
 object Main extends App {
-  val f = if (args.size < 1) 1 else args(0).toInt
+  if (args.size < 2) {
+     println("Usage: <# failures> <# rounds> [delay in s]")
+     System.exit(-1)
+  }
+  val f = args(0).toInt
+  val rounds = args(1).toInt
+  val waittime = if (args.size > 2) args(2).toLong else 1L
   val ports = 12000 to 12000 + (2 * f + 1)
   ports.map(p => new Acceptor(p).listen())
   val proposer = new Proposer(ports)
+  Thread.sleep(1000L * waittime)
   val elapsed: () => Duration = Stopwatch.start()
-  1 to 1000 foreach { _ => proposer.propose() }
+  1 to rounds foreach { _ => proposer.propose() }
   val duration: Duration = elapsed()
-  println("1000 rounds of paxos completed in " + duration)
-  println("Throughput: " + (1000 / duration.inSeconds) + " rounds per second")
+  println(rounds + " rounds of paxos completed in " + duration)
+  println("Throughput: " + (rounds / duration.inSeconds) + " rounds per second")
   System.exit(0)
 }
