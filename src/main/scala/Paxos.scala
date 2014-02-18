@@ -10,7 +10,7 @@ import thrift.PaxosIPC
 import thrift.PrepareResponse
 
 class Proposer(val ports : Seq[Int]) {
-  val threshold : Int = (ports.size / 2) + 1
+  val threshold : Int = (ports.size / 2)
   var next = 0
 
   val clients = ports.map(port => {
@@ -44,7 +44,7 @@ class Proposer(val ports : Seq[Int]) {
       no = n
       vo = v
     }
-    if (a.getAndIncrement + 1 == threshold) {
+    if (a.getAndIncrement == threshold) {
        if (vo == None) {
           vo = Some(next)
           next = next + 1
@@ -56,7 +56,7 @@ class Proposer(val ports : Seq[Int]) {
   }
 
   def accepted(n : Int): Future[Unit] = {
-    if (n == np && a.getAndIncrement + 1 == threshold)
+    if (n == np && a.getAndIncrement == threshold)
       Future.join(clients.map(c => c.decided(vo.get)))
     else Future()
   }
@@ -105,7 +105,7 @@ object Paxos extends App {
   val f = args(0).toInt
   val rounds = args(1).toInt
   val waittime = if (args.size > 2) args(2).toLong else 1L
-  val ports = 12000 to 12000 + (2 * f + 1)
+  val ports = 12000 to 12000 + (2 * f)
   ports.map(p => new Acceptor(p).listen())
   val proposer = new Proposer(ports)
   Thread.sleep(1000L * waittime)
