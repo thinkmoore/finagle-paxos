@@ -97,7 +97,7 @@ class Acceptor(val port : Int) extends PaxosIPC.FutureIface {
   }
 }
 
-object Main extends App {
+object Paxos extends App {
   if (args.size < 2) {
      println("Usage: <# failures> <# rounds> [delay in s]")
      System.exit(-1)
