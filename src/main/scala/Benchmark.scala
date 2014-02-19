@@ -19,16 +19,25 @@ class BenchmarkClient(val ports : Seq[Int]) {
     new BenchmarkIPC.FinagledClient(service, new TBinaryProtocol.Factory())
   })
 
-  def request(messages: Int, window: Int): Unit = {
+  def request(messages: Int, window: Int, syncWindow: Boolean): Unit = {
     val toSend = new AtomicInteger(messages)
     
-    def send(): Future[Unit] = {
-      if (toSend.getAndDecrement() > 0) {
-        Future.join(clients.map(c => c.foo())) flatMap {_ => send()} }
-      else Future.value()
+    if (syncWindow) {
+      def send(): Future[Unit] = {
+        if (toSend.getAndAdd(-window) > 0) {
+          Future.join(0 to window flatMap { _ => clients.map(c => c.foo) }) flatMap { _ => send() }
+        }
+        else Future.value()
+      }
+      send().get()
+    } else {
+      def send(): Future[Unit] = {
+        if (toSend.getAndDecrement() > 0) {
+          Future.join(clients.map(c => c.foo())) flatMap { _ => send() } }
+        else Future.value()
+      }
+      Future.join(0 to window map { _ => send() }).get()
     }
-
-    println(Future.join(0 to window map { _ => send() }).get())
   }
 }
 
@@ -57,12 +66,13 @@ object Benchmark extends App {
   val messages = args(1).toInt
   val inFlight = args(2).toInt
   val waittime = if (args.size > 3) args(3).toLong else 1L
+  val syncWindow = !(args.find(s => s == "-s").isEmpty)
   val ports = 12000 to 12000 + (clients - 1)
   ports.map(p => new BenchmarkServer(p).listen())
   val client = new BenchmarkClient(ports)
   Thread.sleep(1000L * waittime)
   val elapsed: () => Duration = Stopwatch.start()
-  client.request(messages, inFlight)
+  client.request(messages, inFlight, syncWindow)
   val duration: Duration = elapsed()
   println(messages + " messages processed in " + duration)
   println("Throughput: " + (messages / duration.inSeconds) + " messages per second")
