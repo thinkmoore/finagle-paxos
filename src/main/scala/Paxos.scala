@@ -18,12 +18,10 @@ class Proposer(val ports : Seq[Int]) {
     val service : Service[ThriftClientRequest, Array[Byte]] = ClientBuilder()
       .hosts(new InetSocketAddress(port))
       .codec(ThriftClientFramedCodec())
-      .hostConnectionLimit(1024)
+      .hostConnectionLimit(32)
       .build()
     new PaxosIPC.FinagledClient(service, new TBinaryProtocol.Factory())
   })
-
-  val majority = clients.drop(threshold + 1)
 
   var np = 0
   var a  = new AtomicInteger(0)
