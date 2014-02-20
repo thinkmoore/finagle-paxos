@@ -59,7 +59,7 @@ class BenchmarkServer(val port : Int) extends BenchmarkIPC.FutureIface {
 
 object Benchmark extends App {
   if (args.size < 3) {
-     println("Usage: <# clients> <# messages> <# in flight> [delay in s]")
+     println("Usage: <servers> <requests> <window size> [delay] [-s]")
      System.exit(-1)
   }
   val clients = args(0).toInt

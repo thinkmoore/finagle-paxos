@@ -99,7 +99,7 @@ class Acceptor(val port : Int) extends PaxosIPC.FutureIface {
 
 object Paxos extends App {
   if (args.size < 2) {
-     println("Usage: <# failures> <# rounds> [delay in s]")
+     println("Usage: <failures> <rounds> [delay]")
      System.exit(-1)
   }
   val f = args(0).toInt
