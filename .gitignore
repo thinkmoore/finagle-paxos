@@ -1,4 +1,5 @@
 /.history
-/project
+/project/project
+/project/target
 /target
 /sbt-launch.jar
