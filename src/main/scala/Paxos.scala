@@ -93,7 +93,6 @@ class Acceptor(val port : Int) extends PaxosIPC.FutureIface {
   }
 
   def decided(value : Int): Future[Unit] = {
-    // println(port + ": decided(" + value + ")")
     Future()
   }
 }
